@@ -4,11 +4,14 @@ export const runtime = "nodejs"; // ensure streaming works on Node runtime
 
 export async function POST(request) {
   try {
+    const body = await request.json();
     const {
       prompt,
       model = "gpt-4o-mini",
       temperature = 0.7,
-    } = await request.json();
+      tools: requestedTools = [],
+      tool_choice = "auto",
+    } = body || {};
     if (!prompt || typeof prompt !== "string") {
       return new Response(JSON.stringify({ error: "Missing prompt" }), {
         status: 400,
@@ -24,7 +27,7 @@ export async function POST(request) {
       );
     }
 
-    const openai = new OpenAI({ apiKey });
+  const openai = new OpenAI({ apiKey });
 
     const safeModel =
       typeof model === "string" && model.trim() ? model : "gpt-4o-mini";
@@ -37,24 +40,31 @@ export async function POST(request) {
   // Note: The Chat Completions API supports only "function" tools.
   // The "browser" and "code_interpreter" tools are available via the Responses/Assistants APIs, not chat.completions.
   // To use those tools, migrate this route to the Responses API.
-  const stream = await openai.chat.completions.create({
+    // Map requested tool strings to Responses API tool objects
+    const allowedTools = new Set(["code_interpreter", "file_search"]);
+    const tools = Array.isArray(requestedTools)
+      ? requestedTools
+          .filter((t) => typeof t === "string" && allowedTools.has(t))
+          .map((t) => ({ type: t }))
+      : [];
+
+    // Use the Responses API with streaming for tool support
+    const stream = await openai.responses.stream({
       model: safeModel,
-      messages: [
-        { role: "system", content: "You are a helpful assistant." },
-        { role: "user", content: prompt },
-      ],
+      input: prompt,
       temperature: safeTemp,
-      stream: true,
+      ...(tools.length ? { tools, tool_choice } : {}),
     });
 
     const encoder = new TextEncoder();
     const readable = new ReadableStream({
       async start(controller) {
         try {
-          for await (const chunk of stream) {
-            const content = chunk.choices?.[0]?.delta?.content || "";
-            if (content) {
-              controller.enqueue(encoder.encode(content));
+          for await (const event of stream) {
+            if (event.type === "response.output_text.delta") {
+              controller.enqueue(encoder.encode(event.delta));
+            } else if (event.type === "response.error") {
+              throw new Error(event.error?.message || "Response stream error");
             }
           }
         } catch (err) {
@@ -72,6 +82,7 @@ export async function POST(request) {
         "Cache-Control": "no-cache, no-transform",
         "X-Model": safeModel,
         "X-Temperature": String(safeTemp),
+        ...(tools.length ? { "X-Tools": tools.map((t) => t.type).join(",") } : {}),
       },
     });
   } catch (err) {
