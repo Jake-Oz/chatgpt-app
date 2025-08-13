@@ -34,7 +34,10 @@ export async function POST(request) {
       safeTemp = 1.0;
     }
 
-    const stream = await openai.chat.completions.create({
+  // Note: The Chat Completions API supports only "function" tools.
+  // The "browser" and "code_interpreter" tools are available via the Responses/Assistants APIs, not chat.completions.
+  // To use those tools, migrate this route to the Responses API.
+  const stream = await openai.chat.completions.create({
       model: safeModel,
       messages: [
         { role: "system", content: "You are a helpful assistant." },
