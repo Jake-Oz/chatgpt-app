@@ -14,11 +14,6 @@ const geistMono = Geist_Mono({
 export const metadata = {
   title: "ColorBurst Chat",
   description: "A fun, colorful AI chat playground.",
-  icons: {
-    icon: [{ url: "/icon?v=2", type: "image/svg+xml" }],
-    shortcut: ["/icon?v=2"],
-    apple: ["/icon?v=2"],
-  },
 };
 
 export default function RootLayout({ children }) {
