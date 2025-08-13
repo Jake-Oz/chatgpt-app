@@ -2,16 +2,24 @@ import OpenAI from "openai";
 
 export async function POST(request) {
   try {
+    const body = await request.json();
     const {
       prompt,
+      messages,
       model = "gpt-4o-mini",
       temperature = 0.7,
-    } = await request.json();
-    if (!prompt || typeof prompt !== "string") {
-      return new Response(JSON.stringify({ error: "Missing prompt" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
+    } = body || {};
+    if (
+      (!messages || !Array.isArray(messages) || messages.length === 0) &&
+      (!prompt || typeof prompt !== "string")
+    ) {
+      return new Response(
+        JSON.stringify({ error: "Missing prompt or messages" }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
     }
 
     const apiKey = process.env.OPENAI_API_KEY;
@@ -33,12 +41,32 @@ export async function POST(request) {
       safeTemp = 1.0;
     }
 
+    // Use provided conversation if available; otherwise use single-turn prompt
+    const chatMessages =
+      Array.isArray(messages) && messages.length
+        ? [
+            { role: "system", content: "You are a helpful assistant." },
+            ...messages
+              .map((m) => ({
+                role: m?.role,
+                content: String(m?.content ?? ""),
+              }))
+              .filter(
+                (m) =>
+                  (m.role === "user" ||
+                    m.role === "assistant" ||
+                    m.role === "system") &&
+                  m.content.trim()
+              ),
+          ]
+        : [
+            { role: "system", content: "You are a helpful assistant." },
+            { role: "user", content: prompt },
+          ];
+
     const completion = await openai.chat.completions.create({
       model: safeModel,
-      messages: [
-        { role: "system", content: "You are a helpful assistant." },
-        { role: "user", content: prompt },
-      ],
+      messages: chatMessages,
       temperature: safeTemp,
     });
 

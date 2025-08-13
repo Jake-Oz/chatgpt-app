@@ -17,6 +17,7 @@ export default function Home() {
   const [webSearch, setWebSearch] = useState(false);
 
   // Load persisted state
+  const [messages, setMessages] = useState([]); // [{ role: 'user'|'assistant', content: string }]
   useEffect(() => {
     try {
       const saved = JSON.parse(
@@ -27,6 +28,7 @@ export default function Home() {
         if (typeof saved.model === "string") setModel(saved.model);
         if (typeof saved.temperature === "number")
           setTemperature(saved.temperature);
+        if (typeof saved.webSearch === "boolean") setWebSearch(saved.webSearch);
       }
     } catch {}
   }, []);
@@ -36,10 +38,10 @@ export default function Home() {
     try {
       localStorage.setItem(
         "colorburst_state",
-        JSON.stringify({ prompt, model, temperature })
+        JSON.stringify({ prompt, model, temperature, webSearch })
       );
     } catch {}
-  }, [prompt, model, temperature]);
+  }, [prompt, model, temperature, webSearch]);
 
   async function submit(e) {
     e.preventDefault();
@@ -48,18 +50,27 @@ export default function Home() {
     setCopied(false);
     if (!prompt.trim()) return;
     setLoading(true);
+    setUsage(null);
+    const controller = new AbortController();
+    abortRef.current = controller;
     try {
-      const controller = new AbortController();
-      abortRef.current = controller;
+      // Build payload: either prompt or messages[] with new user turn
+      const payload = {
+        model,
+        temperature,
+      };
+      if (messages.length) {
+        payload.messages = messages.concat({ role: "user", content: prompt });
+      } else {
+        payload.prompt = prompt;
+      }
 
       // Prefer streaming endpoint for faster first token
       const res = await fetch("/api/chat/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          prompt,
-          model,
-          temperature,
+          ...payload,
           tools: [webSearch ? "web_search" : null].filter(Boolean),
           tool_choice: webSearch ? "auto" : "none",
         }),
@@ -71,7 +82,7 @@ export default function Home() {
         const fallback = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt, model, temperature }),
+          body: JSON.stringify(payload),
           signal: controller.signal,
         });
         const data = await fallback.json();
@@ -81,6 +92,13 @@ export default function Home() {
         if (typeof data.temperature === "number")
           setServerTemp(data.temperature);
         setUsage(data.usage || null);
+        // Update conversation
+        setMessages((prev) =>
+          prev.concat(
+            { role: "user", content: prompt },
+            { role: "assistant", content: data.text || "" }
+          )
+        );
         return;
       }
 
@@ -89,8 +107,7 @@ export default function Home() {
       const headerTemp = res.headers.get("X-Temperature");
       if (headerModel) setServerModel(headerModel);
       if (headerTemp) setServerTemp(parseFloat(headerTemp));
-      const headerTools = res.headers.get("X-Tools");
-      // Optional: could set a dedicated state to show tools; for now we keep it simple.
+      // const headerTools = res.headers.get("X-Tools"); // optional
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -103,8 +120,14 @@ export default function Home() {
         setResult((prev) => (prev ? prev + chunk : chunk));
       }
 
-      // No token usage via streaming headers; keep previous usage if any
-      setUsage((u) => u || null);
+      // Append streamed assistant message to conversation
+      setMessages((prev) =>
+        prev.concat(
+          { role: "user", content: prompt },
+          { role: "assistant", content: accumulated }
+        )
+      );
+      // No token usage via streaming; leave as null
     } catch (err) {
       if (err?.name === "AbortError") {
         setError("Request cancelled");
@@ -131,6 +154,7 @@ export default function Home() {
     setUsage(null);
     setServerModel("");
     setServerTemp(null);
+    setMessages([]);
   }
 
   return (
@@ -266,6 +290,40 @@ export default function Home() {
               Clear
             </button>
             {error && <span className="text-sm text-red-100/90">{error}</span>}
+          </div>
+          <div className="space-y-3">
+            {messages.map((m, i) => (
+              <div
+                key={i}
+                className={
+                  m.role === "user"
+                    ? "bg-white/10 rounded-xl p-3"
+                    : "bg-black/20 rounded-xl p-3"
+                }
+              >
+                <div className="text-[11px] uppercase tracking-wide opacity-70 mb-1">
+                  {m.role}
+                </div>
+                <div className="whitespace-pre-wrap break-words text-white/95 leading-relaxed">
+                  {m.content}
+                </div>
+              </div>
+            ))}
+            {(loading || result) && (
+              <div className="bg-black/30 rounded-xl p-3 border border-white/10">
+                <div className="text-[11px] uppercase tracking-wide opacity-70 mb-1">
+                  assistant
+                </div>
+                <pre className="whitespace-pre-wrap break-words text-white/95 leading-relaxed">
+                  {result || (loading ? "…" : "")}
+                </pre>
+              </div>
+            )}
+            {!loading && !result && messages.length === 0 && (
+              <div className="text-white/70">
+                Your AI response will appear here.
+              </div>
+            )}
           </div>
         </form>
 

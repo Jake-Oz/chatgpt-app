@@ -7,16 +7,23 @@ export async function POST(request) {
     const body = await request.json();
     const {
       prompt,
+      messages,
       model = "gpt-4o-mini",
       temperature = 0.7,
       tools: requestedTools = [],
       tool_choice = "auto",
     } = body || {};
-    if (!prompt || typeof prompt !== "string") {
-      return new Response(JSON.stringify({ error: "Missing prompt" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
+    if (
+      (!messages || !Array.isArray(messages) || messages.length === 0) &&
+      (!prompt || typeof prompt !== "string")
+    ) {
+      return new Response(
+        JSON.stringify({ error: "Missing prompt or messages" }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
     }
 
     const apiKey = process.env.OPENAI_API_KEY;
@@ -53,9 +60,18 @@ export async function POST(request) {
       : [];
 
     // Use the Responses API with streaming for tool support
+    // If messages array is provided, concatenate a simple transcript for input.
+    // For richer context, switch to responses.create with messages array when supported.
+    const transcript =
+      Array.isArray(messages) && messages.length
+        ? messages
+            .map((m) => `${m.role || "user"}: ${String(m.content ?? "")}`)
+            .join("\n")
+        : prompt;
+
     const stream = await openai.responses.stream({
       model: safeModel,
-      input: prompt,
+      input: transcript,
       temperature: safeTemp,
       ...(tools.length ? { tools, tool_choice } : {}),
     });
