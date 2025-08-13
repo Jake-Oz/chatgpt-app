@@ -27,7 +27,7 @@ export async function POST(request) {
       );
     }
 
-  const openai = new OpenAI({ apiKey });
+    const openai = new OpenAI({ apiKey });
 
     const safeModel =
       typeof model === "string" && model.trim() ? model : "gpt-4o-mini";
@@ -37,9 +37,9 @@ export async function POST(request) {
       safeTemp = 1.0;
     }
 
-  // Note: The Chat Completions API supports only "function" tools.
-  // The "browser" and "code_interpreter" tools are available via the Responses/Assistants APIs, not chat.completions.
-  // To use those tools, migrate this route to the Responses API.
+    // Note: The Chat Completions API supports only "function" tools.
+    // The "browser" and "code_interpreter" tools are available via the Responses/Assistants APIs, not chat.completions.
+    // To use those tools, migrate this route to the Responses API.
     // Map requested tool strings to Responses API tool objects
     const allowedTools = new Set(["code_interpreter", "file_search"]);
     const tools = Array.isArray(requestedTools)
@@ -82,7 +82,9 @@ export async function POST(request) {
         "Cache-Control": "no-cache, no-transform",
         "X-Model": safeModel,
         "X-Temperature": String(safeTemp),
-        ...(tools.length ? { "X-Tools": tools.map((t) => t.type).join(",") } : {}),
+        ...(tools.length
+          ? { "X-Tools": tools.map((t) => t.type).join(",") }
+          : {}),
       },
     });
   } catch (err) {
