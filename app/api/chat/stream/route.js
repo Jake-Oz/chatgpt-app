@@ -41,7 +41,11 @@ export async function POST(request) {
     // The "browser" and "code_interpreter" tools are available via the Responses/Assistants APIs, not chat.completions.
     // To use those tools, migrate this route to the Responses API.
     // Map requested tool strings to Responses API tool objects
-  const allowedTools = new Set(["code_interpreter", "file_search", "web_search"]);
+    const allowedTools = new Set([
+      "code_interpreter",
+      "file_search",
+      "web_search",
+    ]);
     const tools = Array.isArray(requestedTools)
       ? requestedTools
           .filter((t) => typeof t === "string" && allowedTools.has(t))

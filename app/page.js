@@ -87,10 +87,10 @@ export default function Home() {
       // Read model/temp from headers for immediate display
       const headerModel = res.headers.get("X-Model");
       const headerTemp = res.headers.get("X-Temperature");
-  if (headerModel) setServerModel(headerModel);
+      if (headerModel) setServerModel(headerModel);
       if (headerTemp) setServerTemp(parseFloat(headerTemp));
-  const headerTools = res.headers.get("X-Tools");
-  // Optional: could set a dedicated state to show tools; for now we keep it simple.
+      const headerTools = res.headers.get("X-Tools");
+      // Optional: could set a dedicated state to show tools; for now we keep it simple.
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -281,7 +281,7 @@ export default function Home() {
                 {copied ? "Copied" : "Copy"}
               </button>
             </div>
-      {(serverModel || serverTemp !== null) && (
+            {(serverModel || serverTemp !== null) && (
               <div className="text-xs text-white/80 mb-2">
                 Used model:{" "}
                 <span className="font-semibold">
@@ -291,7 +291,12 @@ export default function Home() {
                 <span className="font-semibold">
                   {serverTemp ?? "(default)"}
                 </span>
-        {webSearch && <span> · Tools: <span className="font-semibold">web_search</span></span>}
+                {webSearch && (
+                  <span>
+                    {" "}
+                    · Tools: <span className="font-semibold">web_search</span>
+                  </span>
+                )}
                 {usage && (
                   <>
                     {" "}
