@@ -14,6 +14,7 @@ export default function Home() {
   const [serverTemp, setServerTemp] = useState(null);
   const [usage, setUsage] = useState(null);
   const abortRef = useRef(null);
+  const [webSearch, setWebSearch] = useState(false);
 
   // Load persisted state
   useEffect(() => {
@@ -55,7 +56,13 @@ export default function Home() {
       const res = await fetch("/api/chat/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, model, temperature }),
+        body: JSON.stringify({
+          prompt,
+          model,
+          temperature,
+          tools: [webSearch ? "web_search" : null].filter(Boolean),
+          tool_choice: webSearch ? "auto" : "none",
+        }),
         signal: controller.signal,
       });
 
@@ -80,8 +87,10 @@ export default function Home() {
       // Read model/temp from headers for immediate display
       const headerModel = res.headers.get("X-Model");
       const headerTemp = res.headers.get("X-Temperature");
-      if (headerModel) setServerModel(headerModel);
+  if (headerModel) setServerModel(headerModel);
       if (headerTemp) setServerTemp(parseFloat(headerTemp));
+  const headerTools = res.headers.get("X-Tools");
+  // Optional: could set a dedicated state to show tools; for now we keep it simple.
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -145,7 +154,7 @@ export default function Home() {
             }
           }}
         >
-          {/* Model and temperature controls */}
+          {/* Model, temperature and tools */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
             <div>
               <label className="block text-sm font-medium mb-1" htmlFor="model">
@@ -210,6 +219,17 @@ export default function Home() {
                 <span>2 (creative)</span>
               </div>
             </div>
+            <div className="sm:col-span-2">
+              <label className="inline-flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={webSearch}
+                  onChange={(e) => setWebSearch(e.target.checked)}
+                  className="accent-yellow-300"
+                />
+                Enable Web search (Responses API tool)
+              </label>
+            </div>
           </div>
 
           <label className="block text-sm font-medium mb-2" htmlFor="prompt">
@@ -261,7 +281,7 @@ export default function Home() {
                 {copied ? "Copied" : "Copy"}
               </button>
             </div>
-            {(serverModel || serverTemp !== null) && (
+      {(serverModel || serverTemp !== null) && (
               <div className="text-xs text-white/80 mb-2">
                 Used model:{" "}
                 <span className="font-semibold">
@@ -271,6 +291,7 @@ export default function Home() {
                 <span className="font-semibold">
                   {serverTemp ?? "(default)"}
                 </span>
+        {webSearch && <span> · Tools: <span className="font-semibold">web_search</span></span>}
                 {usage && (
                   <>
                     {" "}
