@@ -15,6 +15,8 @@ export default function Home() {
   const [usage, setUsage] = useState(null);
   const abortRef = useRef(null);
   const [webSearch, setWebSearch] = useState(false);
+  const chatRef = useRef(null);
+  const inputRef = useRef(null);
 
   // Load persisted state
   const [messages, setMessages] = useState([]); // [{ role: 'user'|'assistant', content: string }]
@@ -42,6 +44,11 @@ export default function Home() {
       );
     } catch {}
   }, [prompt, model, temperature, webSearch]);
+
+  // Autofocus input on mount
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
 
   async function submit(e) {
     e.preventDefault();
@@ -87,7 +94,6 @@ export default function Home() {
         });
         const data = await fallback.json();
         if (!fallback.ok) throw new Error(data.error || "Request failed");
-        setResult(data.text);
         if (data.model) setServerModel(data.model);
         if (typeof data.temperature === "number")
           setServerTemp(data.temperature);
@@ -99,6 +105,10 @@ export default function Home() {
             { role: "assistant", content: data.text || "" }
           )
         );
+        // Clear transient UI and input for next question
+        setResult("");
+        setPrompt("");
+        inputRef.current?.focus();
         return;
       }
 
@@ -127,6 +137,11 @@ export default function Home() {
           { role: "assistant", content: accumulated }
         )
       );
+      // Clear transient result now that it's committed to messages
+      setResult("");
+      // Clear input so user can type the next question
+      setPrompt("");
+      inputRef.current?.focus();
       // No token usage via streaming; leave as null
     } catch (err) {
       if (err?.name === "AbortError") {
@@ -141,8 +156,12 @@ export default function Home() {
   }
 
   async function copy() {
-    if (!result) return;
-    await navigator.clipboard.writeText(result);
+    const lastAssistant = [...messages]
+      .reverse()
+      .find((m) => m.role === "assistant");
+    const textToCopy = result || lastAssistant?.content || "";
+    if (!textToCopy) return;
+    await navigator.clipboard.writeText(textToCopy);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   }
@@ -155,7 +174,39 @@ export default function Home() {
     setServerModel("");
     setServerTemp(null);
     setMessages([]);
+    inputRef.current?.focus();
   }
+
+  // Auto-scroll chat to bottom on new content
+  useEffect(() => {
+    const el = chatRef.current;
+    if (!el) return;
+    try {
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    } catch {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [messages, result, loading]);
+
+  const scrollToTop = () => {
+    const el = chatRef.current;
+    if (!el) return;
+    try {
+      el.scrollTo({ top: 0, behavior: "smooth" });
+    } catch {
+      el.scrollTop = 0;
+    }
+  };
+
+  const scrollToBottom = () => {
+    const el = chatRef.current;
+    if (!el) return;
+    try {
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    } catch {
+      el.scrollTop = el.scrollHeight;
+    }
+  };
 
   return (
     <div className="min-h-screen w-full bg-gradient-to-tr from-pink-500 via-purple-500 to-sky-400 text-white">
@@ -178,7 +229,7 @@ export default function Home() {
             }
           }}
         >
-          {/* Model, temperature and tools */}
+          {/* Controls */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
             <div>
               <label className="block text-sm font-medium mb-1" htmlFor="model">
@@ -190,9 +241,7 @@ export default function Home() {
                 onChange={(e) => {
                   const selectedModel = e.target.value;
                   setModel(selectedModel);
-                  if (selectedModel === "gpt-5") {
-                    setTemperature(1.0);
-                  }
+                  if (selectedModel === "gpt-5") setTemperature(1.0);
                 }}
                 className="w-full rounded-xl px-3 py-2 bg-white/10 text-white border border-white/20 focus:border-white/40 outline-none"
               >
@@ -213,7 +262,6 @@ export default function Home() {
                 </option>
               </select>
             </div>
-
             <div>
               <label
                 className="block text-sm font-medium mb-1"
@@ -222,7 +270,6 @@ export default function Home() {
                 Temperature:{" "}
                 <span className="font-semibold">{temperature.toFixed(2)}</span>
               </label>
-              {/* If GPT-5 selected, this must be set to 1.0 and disabled */}
               <input
                 id="temperature"
                 type="range"
@@ -231,9 +278,8 @@ export default function Home() {
                 step={0.01}
                 value={model === "gpt-5" ? 1.0 : temperature}
                 onChange={(e) => {
-                  if (model !== "gpt-5") {
+                  if (model !== "gpt-5")
                     setTemperature(parseFloat(e.target.value));
-                  }
                 }}
                 className="w-full accent-yellow-300"
                 disabled={model === "gpt-5"}
@@ -244,54 +290,52 @@ export default function Home() {
               </div>
             </div>
             <div className="sm:col-span-2">
-              <label className="inline-flex items-center gap-2 text-sm">
+              <label className="inline-flex items-center gap-2 text-sm text-white font-medium">
                 <input
                   type="checkbox"
                   checked={webSearch}
                   onChange={(e) => setWebSearch(e.target.checked)}
-                  className="accent-yellow-300"
+                  className="h-4 w-4 accent-amber-400 bg-white/10 border border-white/60 rounded focus:outline-none focus:ring-2 focus:ring-amber-300"
                 />
-                Enable Web search (Responses API tool)
+                <span className="select-none">
+                  Enable Web search (Responses API tool)
+                </span>
               </label>
             </div>
           </div>
 
-          <label className="block text-sm font-medium mb-2" htmlFor="prompt">
-            Your prompt
-          </label>
-          <textarea
-            id="prompt"
-            className="w-full min-h-32 max-h-[50vh] rounded-xl p-4 text-base text-white placeholder-white/70 bg-white/10 outline-none border border-white/20 focus:border-white/40 transition"
-            placeholder="Write a haiku about summer rain..."
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-          />
-          <div className="mt-4 flex items-center gap-3">
-            <button
-              type="submit"
-              disabled={loading}
-              className="px-5 py-2.5 rounded-xl bg-yellow-300 text-black font-semibold shadow hover:bg-yellow-200 active:translate-y-[1px] disabled:opacity-50"
-            >
-              {loading ? "Thinking…" : "Ask AI"}
-            </button>
-            <button
-              type="button"
-              onClick={() => abortRef.current?.abort()}
-              disabled={!loading}
-              className="px-4 py-2 rounded-xl bg-white/20 hover:bg-white/30 disabled:opacity-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={clearAll}
-              className="px-4 py-2 rounded-xl bg-white/20 hover:bg-white/30"
-            >
-              Clear
-            </button>
-            {error && <span className="text-sm text-red-100/90">{error}</span>}
-          </div>
-          <div className="space-y-3">
+          {/* Session info */}
+          {(serverModel || serverTemp !== null || usage) && (
+            <div className="mb-3 text-xs text-white/80">
+              Used model:{" "}
+              <span className="font-semibold">
+                {serverModel || "(default)"}
+              </span>{" "}
+              · Temp:{" "}
+              <span className="font-semibold">{serverTemp ?? "(default)"}</span>
+              {webSearch && (
+                <span>
+                  {" "}
+                  · Tools: <span className="font-semibold">web_search</span>
+                </span>
+              )}
+              {usage && (
+                <>
+                  {" "}
+                  · Tokens:{" "}
+                  <span className="font-semibold">
+                    {usage.total_tokens ?? usage.total ?? "?"}
+                  </span>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Chat frame */}
+          <div
+            ref={chatRef}
+            className="w-full h-[50vh] max-h-[60vh] overflow-y-auto rounded-xl p-4 bg-white/5 border border-white/10 space-y-3"
+          >
             {messages.map((m, i) => (
               <div
                 key={i}
@@ -321,56 +365,81 @@ export default function Home() {
             )}
             {!loading && !result && messages.length === 0 && (
               <div className="text-white/70">
-                Your AI response will appear here.
+                Your conversation will appear here.
               </div>
             )}
           </div>
-        </form>
 
-        <section className="mt-6">
-          <div className="bg-black/30 rounded-2xl p-5 border border-white/10 shadow-lg">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-semibold">Response</h2>
+          {/* Chat controls */}
+          <div className="mt-3 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
               <button
-                onClick={copy}
-                disabled={!result}
-                className="px-3 py-1.5 rounded-lg bg-white/20 hover:bg-white/30 disabled:opacity-40 text-sm"
+                type="button"
+                onClick={scrollToTop}
+                className="px-3 py-1.5 rounded-lg bg-white/20 hover:bg-white/30 text-xs"
               >
-                {copied ? "Copied" : "Copy"}
+                Top
+              </button>
+              <button
+                type="button"
+                onClick={scrollToBottom}
+                className="px-3 py-1.5 rounded-lg bg-white/20 hover:bg-white/30 text-xs"
+              >
+                Bottom
               </button>
             </div>
-            {(serverModel || serverTemp !== null) && (
-              <div className="text-xs text-white/80 mb-2">
-                Used model:{" "}
-                <span className="font-semibold">
-                  {serverModel || "(default)"}
-                </span>{" "}
-                · Temp:{" "}
-                <span className="font-semibold">
-                  {serverTemp ?? "(default)"}
-                </span>
-                {webSearch && (
-                  <span>
-                    {" "}
-                    · Tools: <span className="font-semibold">web_search</span>
-                  </span>
-                )}
-                {usage && (
-                  <>
-                    {" "}
-                    · Tokens:{" "}
-                    <span className="font-semibold">
-                      {usage.total_tokens ?? usage.total ?? "?"}
-                    </span>
-                  </>
-                )}
-              </div>
-            )}
-            <pre className="whitespace-pre-wrap break-words text-white/95 leading-relaxed">
-              {result || "Your AI response will appear here."}
-            </pre>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => abortRef.current?.abort()}
+                disabled={!loading}
+                className="px-3 py-1.5 rounded-lg bg-white/20 hover:bg-white/30 disabled:opacity-50 text-xs"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={copy}
+                className="px-3 py-1.5 rounded-lg bg-white/20 hover:bg-white/30 text-xs"
+              >
+                {copied ? "Copied" : "Copy last reply"}
+              </button>
+              <button
+                type="button"
+                onClick={clearAll}
+                className="px-3 py-1.5 rounded-lg bg-white/20 hover:bg-white/30 text-xs"
+              >
+                Clear
+              </button>
+            </div>
           </div>
-        </section>
+
+          {/* Prompt input */}
+          <label
+            className="block text-sm font-medium mt-4 mb-2"
+            htmlFor="prompt"
+          >
+            Your prompt
+          </label>
+          <textarea
+            id="prompt"
+            ref={inputRef}
+            className="w-full min-h-28 max-h-[30vh] rounded-xl p-4 text-base text-white placeholder-white/70 bg-white/10 outline-none border border-white/20 focus:border-white/40 transition"
+            placeholder="Write a follow-up or ask a new question…"
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+          />
+          <div className="mt-3 flex items-center gap-3">
+            <button
+              type="submit"
+              disabled={loading}
+              className="px-5 py-2.5 rounded-xl bg-yellow-300 text-black font-semibold shadow hover:bg-yellow-200 active:translate-y-[1px] disabled:opacity-50"
+            >
+              {loading ? "Thinking…" : "Send"}
+            </button>
+            {error && <span className="text-sm text-red-100/90">{error}</span>}
+          </div>
+        </form>
 
         <footer className="mt-10 text-center text-white/80 text-sm">
           Built with Next.js, React, and Tailwind.
